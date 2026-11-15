@@ -3,14 +3,24 @@
 # Runs silently on user login to maintain FamilyMDE, test flags, and permissions
 # ==============================================================================
 
-# 1. Ensure FamilyMDE Settings in HKCU and HKLM
-$mdeHkcu = "HKCU:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
-if (!(Test-Path $mdeHkcu)) { New-Item -Path $mdeHkcu -Force | Out-Null }
-Set-ItemProperty -Path $mdeHkcu -Name "Settings" -Value 1 -Type DWord -Force
+# 1. Ensure FamilyMDE Settings in HKCU, HKLM, and all HKEY_USERS SIDs
+$mdePaths = @(
+    "HKCU\Software\SAMSUNG\SamsungContinuityService\FamilyMDE",
+    "HKLM\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
+)
+foreach ($mp in $mdePaths) {
+    & reg add $mp /v Settings /t REG_DWORD /d 1 /f | Out-Null
+}
 
-$mdeHklm = "HKLM:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
-if (!(Test-Path $mdeHklm)) { New-Item -Path $mdeHklm -Force -ErrorAction SilentlyContinue | Out-Null }
-Set-ItemProperty -Path $mdeHklm -Name "Settings" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+$userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if ($userSid) {
+    & reg add "HKEY_USERS\$userSid\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings /t REG_DWORD /d 1 /f | Out-Null
+}
+
+Get-ChildItem -Path "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'S-1-5-21-\d+-\d+-\d+-\d+$' } | ForEach-Object {
+    $subSid = $_.PSChildName
+    & reg add "HKEY_USERS\$subSid\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings /t REG_DWORD /d 1 /f | Out-Null
+}
 
 # 2. Ensure LocalState Test Flags
 $dirs = @(

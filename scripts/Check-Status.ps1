@@ -28,19 +28,21 @@ Write-Host "  • Product Model       : $prod" -ForegroundColor Gray
 
 # 2. FamilyMDE Registry
 Write-Host "`n[2] Cross-Device P2P (FamilyMDE) Status:" -ForegroundColor Yellow
-$mdeHklm = (Get-ItemProperty -Path "HKLM:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" -ErrorAction SilentlyContinue).Settings
-$mdeHkcu = (Get-ItemProperty -Path "HKCU:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" -ErrorAction SilentlyContinue).Settings
+$userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$mdeHklm = (reg query "HKLM\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings 2>$null | Select-String "0x1")
+$mdeHkcu = (reg query "HKCU\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings 2>$null | Select-String "0x1")
+$mdeSid  = if ($userSid) { (reg query "HKEY_USERS\$userSid\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings 2>$null | Select-String "0x1") } else { $null }
 
-if ($mdeHklm -eq 1) {
-    Write-Host "  • HKLM FamilyMDE      : $mdeHklm [OK]" -ForegroundColor Green
+if ($mdeHklm) {
+    Write-Host "  • HKLM FamilyMDE      : Active (Settings=1) [OK]" -ForegroundColor Green
 } else {
     Write-Host "  • HKLM FamilyMDE      : Missing or Disabled [FAIL]" -ForegroundColor Red
 }
 
-if ($mdeHkcu -eq 1) {
-    Write-Host "  • HKCU FamilyMDE      : $mdeHkcu [OK]" -ForegroundColor Green
+if ($mdeHkcu -or $mdeSid) {
+    Write-Host "  • HKCU / User SID     : Active (Settings=1 in user session) [OK]" -ForegroundColor Green
 } else {
-    Write-Host "  • HKCU FamilyMDE      : Missing or Disabled [FAIL]" -ForegroundColor Red
+    Write-Host "  • HKCU / User SID     : Missing or Disabled [FAIL]" -ForegroundColor Red
 }
 
 # 3. LocalState Engineering Flags
