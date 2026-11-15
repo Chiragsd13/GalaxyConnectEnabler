@@ -1,10 +1,49 @@
 ﻿# ==============================================================================
-# Galaxy Connect Enabler - Diagnostic & Status Checker (v1.1.0)
+# Galaxy Connect Enabler - Diagnostic & Status Checker (v1.2.0)
 # ==============================================================================
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "             GALAXY CONNECT ENABLER - SYSTEM STATUS" -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
+
+# 0. Hardware & Environment Audit
+Write-Host "`n[0] Hardware & Environment Profile:" -ForegroundColor Yellow
+$cpuObj = Get-CimInstance Win32_Processor | Select-Object -First 1
+$cpuName = if ($cpuObj.Name) { $cpuObj.Name.Trim() } else { "Unknown Processor" }
+$cpuVendor = if ($cpuObj.Manufacturer -match "AuthenticAMD|AMD") { "AMD" } elseif ($cpuObj.Manufacturer -match "GenuineIntel|Intel") { "Intel" } elseif ($cpuObj.Manufacturer -match "Qualcomm") { "Qualcomm" } else { "Other" }
+$cpuArch = if ($env:PROCESSOR_ARCHITECTURE) { $env:PROCESSOR_ARCHITECTURE } else { "x64" }
+
+$wifiAdapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { 
+    $_.PhysicalMediaType -match 'Native 802.11|Wireless' -or 
+    $_.InterfaceDescription -match 'Wi-Fi|Wireless|802.11|WLAN' 
+}
+$wifiObj = $wifiAdapters | Select-Object -First 1
+$wifiDesc = if ($wifiObj) { $wifiObj.InterfaceDescription.Trim() } else { "No Wi-Fi Adapter Found" }
+
+$wifiVendor = "Generic"
+if ($wifiDesc -match "MediaTek|MT79|RZ60|RZ61") { $wifiVendor = "MediaTek" }
+elseif ($wifiDesc -match "Realtek|RTL88")       { $wifiVendor = "Realtek" }
+elseif ($wifiDesc -match "Qualcomm|QCA|Atheros") { $wifiVendor = "Qualcomm" }
+elseif ($wifiDesc -match "Intel")               { $wifiVendor = "Intel" }
+
+$btDev = Get-PnpDevice -Class Bluetooth -Status OK -ErrorAction SilentlyContinue | Where-Object { 
+    $_.InstanceId -match 'USB|PCI' 
+} | Select-Object -First 1
+$btName = if ($btDev) { $btDev.FriendlyName } else { "Generic Bluetooth Adapter" }
+
+$cs = Get-CimInstance Win32_ComputerSystem
+$bb = Get-CimInstance Win32_BaseBoard
+$se = Get-CimInstance Win32_SystemEnclosure
+$chassisCode = ($se.ChassisTypes -join ', ')
+
+$gbeDir = Join-Path $env:USERPROFILE ".galaxy-book-enabler"
+$hasGBE = (Test-Path $gbeDir) -or (Get-ScheduledTask -TaskName "*GalaxyBook*" -ErrorAction SilentlyContinue)
+
+Write-Host "  • Processor           : $cpuName ($cpuArch)" -ForegroundColor Gray
+Write-Host "  • Wi-Fi Adapter       : $wifiDesc [$wifiVendor]" -ForegroundColor $(if ($wifiVendor -in @("MediaTek", "Realtek")) { "Yellow" } else { "Green" })
+Write-Host "  • Bluetooth           : $btName" -ForegroundColor Gray
+Write-Host "  • Physical System     : $($cs.Manufacturer) $($cs.Model) (Chassis: $chassisCode)" -ForegroundColor Gray
+Write-Host "  • GBE Interoperability: $(if ($hasGBE) { 'Galaxy Book Enabler Active (Coexistence Mode)' } else { 'Standalone Enabler Mode' })" -ForegroundColor $(if ($hasGBE) { "Cyan" } else { "Green" })
 
 # 1. BIOS Status
 Write-Host "`n[1] BIOS & Hardware Spoof Status:" -ForegroundColor Yellow

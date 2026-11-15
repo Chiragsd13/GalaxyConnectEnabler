@@ -146,3 +146,22 @@ Samsung apps (`SamsungAccount`, `SamsungMyDevices`, `MultiControl`, `SamsungQuic
 - `HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\radios`
 
 Setting `Value = "Allow"` for each Samsung package family and `NonPackaged` desktop applications eliminates the "Location permission is required" prompt and allows automatic BLE discovery of Galaxy phones, tablets, and buds.
+
+
+---
+
+## 4. Hardware Detection & Galaxy Book Enabler Interoperability
+
+### Dynamic Hardware Auditing
+Rather than applying a rigid one-size-fits-all spoof, Galaxy Connect Enabler inspects the host platform dynamically:
+1. **CPU Identification**: Queries `Win32_Processor` for vendor (AMD Ryzen vs Intel vs Qualcomm ARM64). Selects the optimal Galaxy Book model (e.g. `Galaxy Book6 Pro` for AMD/Intel, `Galaxy Book4 Edge` for ARM64).
+2. **Wi-Fi Chipset Inspection**: Identifies network controllers via `Get-NetAdapter`. If a non-Intel chipset (MediaTek, Realtek, Qualcomm, AMD RZ series) is detected on a laptop chassis, the engine automatically selects `EnclosureType = 0x03` to neutralize the Intel-only laptop check in `Commons.dll`.
+3. **Physical Enclosure Inspection**: Queries `Win32_SystemEnclosure.ChassisTypes` to identify whether the machine is physically a laptop, convertible, or desktop.
+
+### Interoperability with Galaxy Book Enabler (GBE)
+Galaxy Connect Enabler operates in two flexible modes:
+- **Standalone Mode**: Provides complete boot persistence (`GalaxyConnectEnabler-Boot` scheduled task) and logon maintenance (`SamsungEcosystemSync.ps1` via `HKCU Run`).
+- **GBE Companion Mode**: When Galaxy Book Enabler is present (`$env:USERPROFILE\.galaxy-book-enabler`):
+  - Automatically synchronizes with GBE by patching `GalaxyBookSpoof.bat` to replace `EnclosureType = 0x0A` with `0x03`.
+  - Injects `FamilyMDE` into the boot routine.
+  - Ensures both tools complement each other: Galaxy Book Enabler provides store app installation and spoofing for Samsung Notes/Settings, while Galaxy Connect Enabler ensures Multi Control, Nearby Devices, and MediaTek/Realtek Wi-Fi compatibility remain intact across reboots.

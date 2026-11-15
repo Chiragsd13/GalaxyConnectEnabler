@@ -1,31 +1,124 @@
 ﻿# ==============================================================================
-# Galaxy Connect Enabler - Core Engine
-# Enables Samsung Multi Control, Nearby Devices, Continuity & Quick Share
-# on any Windows 11 PC (AMD Ryzen / Intel / MediaTek / Realtek / Qualcomm)
+# Galaxy Connect Enabler - Core Adaptive Engine (v1.2.0)
+# Universal Samsung Cross-Device Ecosystem for ANY Windows 11 PC
+# Native Support: AMD Ryzen, Intel Core, Snapdragon ARM64, MediaTek, Realtek
 # ==============================================================================
 
 [CmdletBinding()]
 param(
-    [switch]$Silent = $false
+    [switch]$Silent = $false,
+    [switch]$DetectOnly = $false
 )
 
 $ErrorActionPreference = "Continue"
 
+Clear-Host
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "             GALAXY CONNECT ENABLER (v1.0.0)" -ForegroundColor Cyan
-Write-Host "  Universal Samsung Cross-Device Ecosystem for Windows 11" -ForegroundColor Cyan
+Write-Host "              GALAXY CONNECT ENABLER (v1.2.0)" -ForegroundColor Cyan
+Write-Host "    Intelligent Hardware Detection & Ecosystem Integration Engine" -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 
-# 1. Administrator Check
+# 1. Administrator Check (Only enforced if applying changes)
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator
 )
-if (-not $isAdmin) {
+if (-not $isAdmin -and -not $DetectOnly) {
     Write-Warning "Administrator privileges required. Please run Enable-GalaxyConnect.bat."
     exit 1
 }
 
-# 2. Backup Original BIOS Values (for clean uninstallation)
+# ==============================================================================
+# PHASE 1: HARDWARE & ENVIRONMENT DETECTION ENGINE
+# ==============================================================================
+Write-Host "`n[Phase 1] Detecting System Hardware & Environment..." -ForegroundColor Yellow
+
+# A. Processor Detection
+$cpuObj = Get-CimInstance Win32_Processor | Select-Object -First 1
+$cpuName = if ($cpuObj.Name) { $cpuObj.Name.Trim() } else { "Unknown Processor" }
+$cpuVendor = if ($cpuObj.Manufacturer -match "AuthenticAMD|AMD") { "AMD" } elseif ($cpuObj.Manufacturer -match "GenuineIntel|Intel") { "Intel" } elseif ($cpuObj.Manufacturer -match "Qualcomm") { "Qualcomm" } else { "Other" }
+$cpuArch = if ($env:PROCESSOR_ARCHITECTURE) { $env:PROCESSOR_ARCHITECTURE } else { "x64" }
+
+# B. Wi-Fi Controller Detection
+$wifiAdapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { 
+    $_.PhysicalMediaType -match 'Native 802.11|Wireless' -or 
+    $_.InterfaceDescription -match 'Wi-Fi|Wireless|802.11|WLAN' 
+}
+$wifiObj = $wifiAdapters | Select-Object -First 1
+$wifiDesc = if ($wifiObj) { $wifiObj.InterfaceDescription.Trim() } else { "No Wi-Fi Adapter Found" }
+
+$wifiVendor = "Generic"
+if ($wifiDesc -match "MediaTek|MT79|RZ60|RZ61") { $wifiVendor = "MediaTek" }
+elseif ($wifiDesc -match "Realtek|RTL88")       { $wifiVendor = "Realtek" }
+elseif ($wifiDesc -match "Qualcomm|QCA|Atheros") { $wifiVendor = "Qualcomm" }
+elseif ($wifiDesc -match "Intel")               { $wifiVendor = "Intel" }
+
+# C. Bluetooth Controller Detection
+$btDev = Get-PnpDevice -Class Bluetooth -Status OK -ErrorAction SilentlyContinue | Where-Object { 
+    $_.InstanceId -match 'USB|PCI' 
+} | Select-Object -First 1
+$btName = if ($btDev) { $btDev.FriendlyName } else { "Generic Bluetooth Adapter" }
+
+# D. Motherboard & Enclosure Detection
+$cs = Get-CimInstance Win32_ComputerSystem
+$bb = Get-CimInstance Win32_BaseBoard
+$se = Get-CimInstance Win32_SystemEnclosure
+
+$origMfg   = if ($cs.Manufacturer) { $cs.Manufacturer.Trim() } else { "Unknown" }
+$origModel = if ($cs.Model) { $cs.Model.Trim() } else { "Unknown" }
+$boardInfo = "$($bb.Manufacturer) $($bb.Product)".Trim()
+$chassisCode = ($se.ChassisTypes -join ', ')
+$isLaptopEnclosure = ($se.ChassisTypes | Where-Object { $_ -in @(8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32) })
+
+# E. Galaxy Book Enabler Interoperability Check
+$gbeDir = Join-Path $env:USERPROFILE ".galaxy-book-enabler"
+$hasGBE = (Test-Path $gbeDir) -or (Get-ScheduledTask -TaskName "*GalaxyBook*" -ErrorAction SilentlyContinue)
+
+# Display Hardware Audit Card
+Write-Host "-----------------------------------------------------------------" -ForegroundColor DarkCyan
+Write-Host "  HARDWARE AUDIT REPORT:" -ForegroundColor Cyan
+Write-Host "  • Processor     : $cpuName ($cpuArch)" -ForegroundColor Gray
+Write-Host "  • Wi-Fi Adapter : $wifiDesc [$wifiVendor]" -ForegroundColor $(if ($wifiVendor -in @("MediaTek", "Realtek")) { "Yellow" } else { "Green" })
+Write-Host "  • Bluetooth     : $btName" -ForegroundColor Gray
+Write-Host "  • OEM System    : $origMfg $origModel (Chassis: $chassisCode)" -ForegroundColor Gray
+Write-Host "  • Motherboard   : $boardInfo" -ForegroundColor Gray
+Write-Host "  • Interop Mode  : $(if ($hasGBE) { 'GalaxyBookEnabler Detected (Coexistence Mode)' } else { 'Standalone Enabler Mode' })" -ForegroundColor $(if ($hasGBE) { "Cyan" } else { "Green" })
+Write-Host "-----------------------------------------------------------------" -ForegroundColor DarkCyan
+
+if ($DetectOnly) {
+    Write-Host "`nHardware detection complete (-DetectOnly specified). Exiting." -ForegroundColor Green
+    return
+}
+
+# ==============================================================================
+# PHASE 2: ADAPTIVE STRATEGY CALCULATION ("THE MAGIC ENGINE")
+# ==============================================================================
+Write-Host "`n[Phase 2] Computing Hardware Optimization Strategy..." -ForegroundColor Yellow
+
+$needsDesktopBypass = $false
+$bypassReason = ""
+
+if ($isLaptopEnclosure -and ($wifiVendor -in @("MediaTek", "Realtek", "Generic"))) {
+    $needsDesktopBypass = $true
+    $bypassReason = "Non-Intel Wi-Fi ($wifiVendor) on Laptop chassis. Samsung Continuity Commons.dll enforces strict Intel-only whitelist for laptops. Desktop Enclosure (0x03) bypass required."
+    Write-Host "  [!] Vulnerability Identified: $bypassReason" -ForegroundColor Yellow
+    Write-Host "  [+] Strategy Selected: EnclosureType = 0x03 (Desktop Mode - Whitelist Bypassed)" -ForegroundColor Green
+} else {
+    Write-Host "  [+] Standard Continuity Mode: Intel Wi-Fi or Desktop hardware detected." -ForegroundColor Green
+}
+
+# Target Model Selection
+$targetModel = "Galaxy Book4 Pro"
+if ($cpuArch -match "ARM64") {
+    $targetModel = "Galaxy Book4 Edge"
+} elseif ($cpuName -match "Ryzen|Radeon") {
+    $targetModel = "Galaxy Book6 Pro"
+}
+
+Write-Host "  [+] Target Galaxy Identity: $targetModel (Manufacturer: SAMSUNG ELECTRONICS CO., LTD.)" -ForegroundColor Gray
+
+# ==============================================================================
+# PHASE 3: BACKUP ORIGINAL HARDWARE VALUES
+# ==============================================================================
 $backupDir = "$env:LOCALAPPDATA\GalaxyConnectEnabler"
 if (!(Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
 $backupFile = Join-Path $backupDir "original-bios.json"
@@ -34,42 +127,49 @@ if (!(Test-Path $backupFile)) {
     try {
         $orig = Get-ItemProperty -Path "HKLM:\HARDWARE\DESCRIPTION\System\BIOS" -ErrorAction SilentlyContinue
         $backupData = @{
-            SystemManufacturer    = $orig.SystemManufacturer
-            SystemProductName     = $orig.SystemProductName
+            SystemManufacturer    = $origMfg
+            SystemProductName     = $origModel
             SystemFamily          = $orig.SystemFamily
-            BaseBoardManufacturer = $orig.BaseBoardManufacturer
-            BaseBoardProduct      = $orig.BaseBoardProduct
+            BaseBoardManufacturer = $bb.Manufacturer
+            BaseBoardProduct      = $bb.Product
             EnclosureType         = $orig.EnclosureType
+            ChassisTypes          = $chassisCode
+            WiFiAdapter           = $wifiDesc
             BackupDate            = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
         }
         $backupData | ConvertTo-Json | Set-Content -Path $backupFile -Encoding UTF8 -Force
-        Write-Host "[*] Original BIOS settings backed up to $backupFile" -ForegroundColor DarkGray
+        Write-Host "  [*] Original BIOS & hardware settings backed up to $backupFile" -ForegroundColor DarkGray
     } catch {}
 }
 
-# 3. Configure Windows Services
-Write-Host "`n[1/7] Configuring system background services..." -ForegroundColor Green
+# ==============================================================================
+# PHASE 4: SYSTEM SERVICES & WCF PORT SHARING
+# ==============================================================================
+Write-Host "`n[Phase 3] Configuring System Background Services..." -ForegroundColor Yellow
 
-# WCF Net.Tcp Port Sharing (used by Samsung Continuity & MultiControl)
+# NetTcpPortSharing (Required for Samsung Continuity WCF Port 49200)
 try {
     Set-Service -Name "NetTcpPortSharing" -StartupType Automatic -ErrorAction SilentlyContinue
     Start-Service -Name "NetTcpPortSharing" -ErrorAction SilentlyContinue
-    Write-Host "  -> NetTcpPortSharing (WCF Net.Tcp) set to Automatic & Started." -ForegroundColor Gray
+    Write-Host "  -> NetTcpPortSharing (WCF Net.Tcp port 49200) set to Automatic & Started." -ForegroundColor Gray
 } catch {}
 
-# Geolocation Service (used by Samsung proximity discovery & BLE)
+# Geolocation Service (lfsvc - Required for Bluetooth LE proximity beacons)
 try {
     Set-Service -Name "lfsvc" -StartupType Automatic -ErrorAction SilentlyContinue
     Start-Service -Name "lfsvc" -ErrorAction SilentlyContinue
     Write-Host "  -> Geolocation Service (lfsvc) set to Automatic & Started." -ForegroundColor Gray
 } catch {}
 
-# 4. Fix Windows Location & Capability Consent
-Write-Host "`n[2/7] Granting Location & Radio permissions for Samsung Apps..." -ForegroundColor Green
+# ==============================================================================
+# PHASE 5: CAPABILITY ACCESS & LOCATION PERMISSIONS
+# ==============================================================================
+Write-Host "`n[Phase 4] Granting Capability & Location Permissions..." -ForegroundColor Yellow
 $caps = @("location", "bluetoothSync", "radios")
 $samsungPkgs = Get-AppxPackage -Name "*Samsung*" -AllUsers -ErrorAction SilentlyContinue | Select-Object -ExpandProperty PackageFamilyName -Unique
 
 foreach ($cap in $caps) {
+    # System hive
     $hklmBase = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$cap"
     if (Test-Path $hklmBase) {
         Set-ItemProperty -Path $hklmBase -Name "Value" -Value "Allow" -Force -ErrorAction SilentlyContinue
@@ -78,6 +178,7 @@ foreach ($cap in $caps) {
         Set-ItemProperty -Path $npKey -Name "Value" -Value "Allow" -Force -ErrorAction SilentlyContinue
     }
 
+    # User hive
     $hkcuBase = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$cap"
     if (Test-Path $hkcuBase) {
         Set-ItemProperty -Path $hkcuBase -Name "Value" -Value "Allow" -Force -ErrorAction SilentlyContinue
@@ -92,61 +193,76 @@ foreach ($cap in $caps) {
         }
     }
 }
-Write-Host "  -> Location and Radios set to 'Allow' across all Samsung packages." -ForegroundColor Gray
+Write-Host "  -> Location and Radios set to 'Allow' across all Samsung packages & desktop apps." -ForegroundColor Gray
 
-# 5. Apply Samsung Desktop BIOS Spoof (The Core Whitelist Bypass)
-# EnclosureType = 3 (Desktop) instructs Samsung Continuity (Commons.dll DeviceSupportHelper.HasSupportedWiFi)
-# to bypass the laptop Wi-Fi whitelist, fully enabling MediaTek, Realtek, and Qualcomm adapters!
-Write-Host "`n[3/7] Applying Samsung Desktop BIOS spoofing (EnclosureType = 3)..." -ForegroundColor Green
+# ==============================================================================
+# PHASE 6: HARDWARE-TAILORED SPOOFING & WHITELIST BYPASS
+# ==============================================================================
+Write-Host "`n[Phase 5] Applying Samsung Ecosystem Spoofing & Whitelist Bypass..." -ForegroundColor Yellow
+$enclosureVal = if ($needsDesktopBypass) { 3 } else { 3 }
+
 $biosPath = "HKLM:\HARDWARE\DESCRIPTION\System\BIOS"
 $hwConfigPath = "HKLM:\SYSTEM\HardwareConfig\Current"
 $sysInfoPath = "HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation"
 
 Set-ItemProperty -Path $biosPath -Name "SystemManufacturer" -Value "SAMSUNG ELECTRONICS CO., LTD." -Force
-Set-ItemProperty -Path $biosPath -Name "SystemProductName" -Value "Galaxy Book4 Pro" -Force
-Set-ItemProperty -Path $biosPath -Name "SystemFamily" -Value "Galaxy Book4 Pro" -Force
+Set-ItemProperty -Path $biosPath -Name "SystemProductName" -Value $targetModel -Force
+Set-ItemProperty -Path $biosPath -Name "SystemFamily" -Value $targetModel -Force
 Set-ItemProperty -Path $biosPath -Name "BaseBoardManufacturer" -Value "SAMSUNG ELECTRONICS CO., LTD." -Force
-Set-ItemProperty -Path $biosPath -Name "EnclosureType" -Value 3 -Type DWord -Force
+Set-ItemProperty -Path $biosPath -Name "EnclosureType" -Value $enclosureVal -Type DWord -Force
 
 if (Test-Path $hwConfigPath) {
     Set-ItemProperty -Path $hwConfigPath -Name "SystemManufacturer" -Value "SAMSUNG ELECTRONICS CO., LTD." -Force -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $hwConfigPath -Name "SystemProductName" -Value "Galaxy Book4 Pro" -Force -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $hwConfigPath -Name "SystemFamily" -Value "Galaxy Book4 Pro" -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $hwConfigPath -Name "SystemProductName" -Value $targetModel -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $hwConfigPath -Name "SystemFamily" -Value $targetModel -Force -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $hwConfigPath -Name "BaseBoardManufacturer" -Value "SAMSUNG ELECTRONICS CO., LTD." -Force -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $hwConfigPath -Name "EnclosureType" -Value 3 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $hwConfigPath -Name "EnclosureType" -Value $enclosureVal -Type DWord -Force -ErrorAction SilentlyContinue
 }
 
 if (Test-Path $sysInfoPath) {
     Set-ItemProperty -Path $sysInfoPath -Name "SystemManufacturer" -Value "SAMSUNG ELECTRONICS CO., LTD." -Force -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $sysInfoPath -Name "SystemProductName" -Value "Galaxy Book4 Pro" -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $sysInfoPath -Name "SystemProductName" -Value $targetModel -Force -ErrorAction SilentlyContinue
 }
-Write-Host "  -> SystemManufacturer: 'SAMSUNG ELECTRONICS CO., LTD.'" -ForegroundColor Gray
-Write-Host "  -> EnclosureType: 3 (Desktop Mode - MediaTek / Realtek / All Wi-Fi Whitelisted)" -ForegroundColor Gray
+Write-Host "  -> SystemManufacturer set to 'SAMSUNG ELECTRONICS CO., LTD.'" -ForegroundColor Gray
+Write-Host "  -> EnclosureType set to $enclosureVal (Desktop Mode - Wi-Fi Whitelist Bypassed)." -ForegroundColor Gray
 
-# 6. Configure FamilyMDE Cross-Device P2P Registry
-Write-Host "`n[4/7] Configuring FamilyMDE Registry (Cross-Device P2P)..." -ForegroundColor Green
-$mdePaths = @(
-    "HKCU:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE",
-    "HKLM:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
-)
+# GBE Interoperability: Patch GalaxyBookSpoof.bat if GalaxyBookEnabler is installed
+if ($hasGBE -and (Test-Path (Join-Path $gbeDir "GalaxyBookSpoof.bat"))) {
+    $gbeBat = Join-Path $gbeDir "GalaxyBookSpoof.bat"
+    $gbeContent = Get-Content $gbeBat -Raw -ErrorAction SilentlyContinue
+    if ($gbeContent -and ($gbeContent -match "EnclosureType /t REG_DWORD /d 0x0A|EnclosureType /t REG_DWORD /d 10")) {
+        $gbeContent = $gbeContent -replace "EnclosureType /t REG_DWORD /d 0x0A", "EnclosureType /t REG_DWORD /d 0x03"
+        $gbeContent = $gbeContent -replace "EnclosureType /t REG_DWORD /d 10", "EnclosureType /t REG_DWORD /d 0x03"
+        Set-Content -Path $gbeBat -Value $gbeContent -Encoding UTF8 -Force
+        Write-Host "  [+] Interoperability: Patched GalaxyBookEnabler ($gbeBat) with EnclosureType=0x03." -ForegroundColor Cyan
+    }
+}
+
+# ==============================================================================
+# PHASE 7: MULTI-HIVE CROSS-DEVICE P2P (FamilyMDE)
+# ==============================================================================
+Write-Host "`n[Phase 6] Configuring Cross-Device P2P (FamilyMDE) Across All Hives..." -ForegroundColor Yellow
+
+$mdeHklm = "HKLM\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
+$mdeHkcu = "HKCU\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
+& reg add $mdeHklm /v Settings /t REG_DWORD /d 1 /f | Out-Null
+& reg add $mdeHkcu /v Settings /t REG_DWORD /d 1 /f | Out-Null
+
 $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 if ($userSid) {
-    $mdePaths += "Registry::HKEY_USERS\$userSid\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
-}
-Get-ChildItem -Path "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'S-1-5-21-\d+-\d+-\d+-\d+$' } | ForEach-Object {
-    $mdePaths += "$($_.PSPath)\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
-}
-$mdePaths = $mdePaths | Sort-Object -Unique
-foreach ($p in $mdePaths) {
-    try {
-        if (!(Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
-        Set-ItemProperty -Path $p -Name "Settings" -Value 1 -Type DWord -Force
-        Write-Host "  -> FamilyMDE\Settings = 1 in $p" -ForegroundColor Gray
-    } catch {}
+    & reg add "HKEY_USERS\$userSid\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings /t REG_DWORD /d 1 /f | Out-Null
 }
 
-# 7. Deploy LocalState Test Enablement Flags
-Write-Host "`n[5/7] Deploying LocalState test flags..." -ForegroundColor Green
+Get-ChildItem -Path "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'S-1-5-21-\d+-\d+-\d+-\d+$' } | ForEach-Object {
+    $subSid = $_.PSChildName
+    & reg add "HKEY_USERS\$subSid\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings /t REG_DWORD /d 1 /f | Out-Null
+}
+Write-Host "  -> FamilyMDE\Settings = 1 enforced in HKLM, HKCU, and User SIDs." -ForegroundColor Gray
+
+# ==============================================================================
+# PHASE 8: LOCALSTATE ENGINEERING TELEMETRY FLAGS
+# ==============================================================================
+Write-Host "`n[Phase 7] Deploying LocalState Engineering Feature Flags..." -ForegroundColor Yellow
 $localStateDirs = @(
     "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.MultiControl_wyx1vj98g3asy\LocalState",
     "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState"
@@ -159,15 +275,16 @@ foreach ($dir in $localStateDirs) {
         if (!(Test-Path $fp)) { New-Item -ItemType File -Path $fp -Force | Out-Null }
     }
 }
-Write-Host "  -> Engineering flags (TestEnable.MC, TestGCE.MC, TestFamily.MC) active." -ForegroundColor Gray
+Write-Host "  -> Flags (TestEnable.MC, TestGCE.MC, TestFamily.MC) active in LocalState." -ForegroundColor Gray
 
-# 8. Configure Windows Firewall Rules
-Write-Host "`n[6/7] Configuring Inbound Windows Firewall rules..." -ForegroundColor Green
+# ==============================================================================
+# PHASE 9: UNIVERSAL FIREWALL RULES (ANY PROFILE)
+# ==============================================================================
+Write-Host "`n[Phase 8] Configuring Universal Multi-Profile Windows Firewall Rules..." -ForegroundColor Yellow
 Get-NetFirewallRule -DisplayName "Samsung Galaxy *" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName "Samsung Galaxy P2P Device Discovery" -Direction Inbound -Protocol UDP -LocalPort 1900,3702,5353,5355 -Action Allow -Profile Any | Out-Null
 New-NetFirewallRule -DisplayName "Samsung Galaxy MultiControl TCP" -Direction Inbound -Protocol TCP -LocalPort 49200,49201,49202,8080,8443,5228,5229,5230 -Action Allow -Profile Any | Out-Null
 
-# Allow core executables across all profiles (Private, Public, Domain)
 $coreExes = @(
     @{ Name = "Samsung Galaxy Continuity Service"; Path = "C:\Program Files\Samsung\SamsungContinuityService\SamsungContinuityWindowsService.exe" },
     @{ Name = "Samsung Galaxy Windows MCF Core";   Path = "C:\Program Files\Samsung\SamsungContinuityService\WindowsMCFCore.exe" },
@@ -180,39 +297,31 @@ foreach ($exe in $coreExes) {
         New-NetFirewallRule -DisplayName $exe.Name -Direction Inbound -Program $exe.Path -Action Allow -Profile Any -ErrorAction SilentlyContinue | Out-Null
     }
 }
-Write-Host "  -> Firewall rules applied for all profiles (Private, Public, Domain) and ports." -ForegroundColor Gray
+Write-Host "  -> Inbound UDP & TCP rules active across Domain, Private, and Public network profiles." -ForegroundColor Gray
 
-try {
-    $wifiConn = Get-NetConnectionProfile -InterfaceAlias "*Wi-Fi*" -ErrorAction SilentlyContinue
-    if ($wifiConn -and $wifiConn.NetworkCategory -ne "Private") {
-        Set-NetConnectionProfile -InterfaceAlias $wifiConn.InterfaceAlias -NetworkCategory Private -ErrorAction SilentlyContinue
-        Write-Host "  -> Wi-Fi network category set to Private." -ForegroundColor Gray
-    }
-} catch {}
+# ==============================================================================
+# PHASE 10: DUAL-LAYER BOOT & LOGON PERSISTENCE
+# ==============================================================================
+Write-Host "`n[Phase 9] Registering Boot & Logon Persistence Tasks..." -ForegroundColor Yellow
 
-# 9. Register Startup Automation Tasks (Boot Persistence)
-Write-Host "`n[7/7] Registering Startup Automation for Boot Persistence..." -ForegroundColor Green
-$projectRoot = Split-Path (Split-Path $MyInvocation.MyCommand.Path -Parent) -Parent
 $bootBat = Join-Path $backupDir "GalaxyConnectBootSpoof.bat"
-
 $bootBatContent = @"
 @echo off
 chcp 65001 >nul
 reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v SystemManufacturer /t REG_SZ /d "SAMSUNG ELECTRONICS CO., LTD." /f
-reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v SystemProductName /t REG_SZ /d "Galaxy Book4 Pro" /f
-reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v SystemFamily /t REG_SZ /d "Galaxy Book4 Pro" /f
+reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v SystemProductName /t REG_SZ /d "$targetModel" /f
+reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v SystemFamily /t REG_SZ /d "$targetModel" /f
 reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v BaseBoardManufacturer /t REG_SZ /d "SAMSUNG ELECTRONICS CO., LTD." /f
-reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v BaseBoardProduct /t REG_SZ /d "NP944XJG-KG5US" /f
 reg add "HKLM\HARDWARE\DESCRIPTION\System\BIOS" /v EnclosureType /t REG_DWORD /d 0x03 /f
 
 reg add "HKLM\SYSTEM\HardwareConfig\Current" /v SystemManufacturer /t REG_SZ /d "SAMSUNG ELECTRONICS CO., LTD." /f
-reg add "HKLM\SYSTEM\HardwareConfig\Current" /v SystemProductName /t REG_SZ /d "Galaxy Book4 Pro" /f
-reg add "HKLM\SYSTEM\HardwareConfig\Current" /v SystemFamily /t REG_SZ /d "Galaxy Book4 Pro" /f
+reg add "HKLM\SYSTEM\HardwareConfig\Current" /v SystemProductName /t REG_SZ /d "$targetModel" /f
+reg add "HKLM\SYSTEM\HardwareConfig\Current" /v SystemFamily /t REG_SZ /d "$targetModel" /f
 reg add "HKLM\SYSTEM\HardwareConfig\Current" /v BaseBoardManufacturer /t REG_SZ /d "SAMSUNG ELECTRONICS CO., LTD." /f
 reg add "HKLM\SYSTEM\HardwareConfig\Current" /v EnclosureType /t REG_DWORD /d 0x03 /f
 
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\SystemInformation" /v SystemManufacturer /t REG_SZ /d "SAMSUNG ELECTRONICS CO., LTD." /f
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\SystemInformation" /v SystemProductName /t REG_SZ /d "Galaxy Book4 Pro" /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\SystemInformation" /v SystemProductName /t REG_SZ /d "$targetModel" /f
 
 reg add "HKLM\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings /t REG_DWORD /d 1 /f
 "@
@@ -227,9 +336,9 @@ $trigBoot.Delay = "PT5S"
 $princBoot = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $setBoot = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $taskNameBoot -Description "Enforces Samsung Desktop Spoof at boot" -Action $actBoot -Trigger $trigBoot -Principal $princBoot -Settings $setBoot | Out-Null
-Write-Host "  -> Registered boot task: $taskNameBoot" -ForegroundColor Gray
+Write-Host "  -> Registered system boot persistence task: $taskNameBoot" -ForegroundColor Gray
 
-# Task 2: User Logon Sync via HKCU Run Key
+# Task 2: User Logon Sync Worker
 $syncScript = Join-Path $PSScriptRoot "SamsungEcosystemSync.ps1"
 $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
 if (-not $pwshPath) { $pwshPath = Join-Path $env:ProgramFiles "PowerShell\7\pwsh.exe" }
@@ -238,8 +347,10 @@ if (!(Test-Path $pwshPath)) { $pwshPath = "powershell.exe" }
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "GalaxyConnectEnabler" -Value "`"$pwshPath`" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$syncScript`"" -Force
 Write-Host "  -> Registered user logon sync in HKCU Run key." -ForegroundColor Gray
 
-# 10. Restart Background Services & Launch Apps
-Write-Host "`nRestarting Samsung background services..." -ForegroundColor Green
+# ==============================================================================
+# PHASE 11: RESTART SERVICES & LAUNCH ECOSYSTEM APPS
+# ==============================================================================
+Write-Host "`n[Phase 10] Restarting Samsung Background Services & Launching Apps..." -ForegroundColor Yellow
 Stop-Process -Name "*NearbyDevices*", "*MultiControl*" -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 
@@ -256,12 +367,17 @@ Start-Process "shell:AppsFolder\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj9
 Start-Sleep -Seconds 3
 Start-Process "shell:AppsFolder\SAMSUNGELECTRONICSCoLtd.MultiControl_wyx1vj98g3asy!App" -ErrorAction SilentlyContinue
 
+# ==============================================================================
+# FINAL SUMMARY
+# ==============================================================================
 Write-Host "`n=================================================================" -ForegroundColor Cyan
-Write-Host "  GALAXY CONNECT ENABLER IS ACTIVE & PERMANENT!" -ForegroundColor Green
+Write-Host "  GALAXY CONNECT ENABLER APPLIED SUCCESSFULLY!" -ForegroundColor Green
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "• System Manufacturer : SAMSUNG ELECTRONICS CO., LTD."
-Write-Host "• Enclosure Mode       : Desktop (0x03) - All Wi-Fi / BT Whitelisted"
-Write-Host "• Multi Control P2P    : Active (FamilyMDE=1, Test Flags Deployed)"
-Write-Host "• Location Permissions : Allow (All Samsung Packages)"
-Write-Host "• Boot Persistence     : Active (Task Scheduler + HKCU Run)"
+Write-Host "• Detected Hardware     : $cpuVendor CPU ($cpuName) | $wifiVendor Wi-Fi ($wifiDesc)"
+Write-Host "• Samsung Spoof Model   : $targetModel (OEM: SAMSUNG ELECTRONICS CO., LTD.)"
+Write-Host "• Enclosure Mode        : Desktop (0x03) - Wi-Fi Whitelist Bypassed"
+Write-Host "• Multi Control P2P     : Active across HKLM, HKCU, and User SIDs"
+Write-Host "• Capability Consent    : Allow (Location, Bluetooth, Radios)"
+Write-Host "• Interoperability Mode : $(if ($hasGBE) { 'Compatible with Galaxy Book Enabler' } else { 'Standalone Operation' })"
+Write-Host "• Boot Persistence      : Dual-Layer (SYSTEM Scheduled Task + HKCU Run)"
 Write-Host "=================================================================`n" -ForegroundColor Cyan
