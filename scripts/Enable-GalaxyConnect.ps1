@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Galaxy Connect Enabler - Core Engine
 # Enables Samsung Multi Control, Nearby Devices, Continuity & Quick Share
 # on any Windows 11 PC (AMD Ryzen / Intel / MediaTek / Realtek / Qualcomm)
@@ -166,7 +166,21 @@ Write-Host "`n[6/7] Configuring Inbound Windows Firewall rules..." -ForegroundCo
 Get-NetFirewallRule -DisplayName "Samsung Galaxy *" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName "Samsung Galaxy P2P Device Discovery" -Direction Inbound -Protocol UDP -LocalPort 1900,3702,5353,5355 -Action Allow -Profile Any | Out-Null
 New-NetFirewallRule -DisplayName "Samsung Galaxy MultiControl TCP" -Direction Inbound -Protocol TCP -LocalPort 49200,49201,49202,8080,8443,5228,5229,5230 -Action Allow -Profile Any | Out-Null
-Write-Host "  -> UDP Discovery ports (1900,3702,5353,5355) & TCP ports (49200-49202) opened." -ForegroundColor Gray
+
+# Allow core executables across all profiles (Private, Public, Domain)
+$coreExes = @(
+    @{ Name = "Samsung Galaxy Continuity Service"; Path = "C:\Program Files\Samsung\SamsungContinuityService\SamsungContinuityWindowsService.exe" },
+    @{ Name = "Samsung Galaxy Windows MCF Core";   Path = "C:\Program Files\Samsung\SamsungContinuityService\WindowsMCFCore.exe" },
+    @{ Name = "Samsung Galaxy MultiControl Svc";   Path = "C:\Program Files\Samsung\SamsungMultiControl\SamsungMultiControlService.exe" },
+    @{ Name = "Samsung Galaxy MultiControl App";   Path = "C:\Program Files\Samsung\SamsungMultiControl\SamsungMultiControl.exe" },
+    @{ Name = "Samsung Galaxy MultiControl Helper";Path = "C:\Program Files\Samsung\SamsungMultiControl\SamsungMultiControlHelper.exe" }
+)
+foreach ($exe in $coreExes) {
+    if (Test-Path $exe.Path) {
+        New-NetFirewallRule -DisplayName $exe.Name -Direction Inbound -Program $exe.Path -Action Allow -Profile Any -ErrorAction SilentlyContinue | Out-Null
+    }
+}
+Write-Host "  -> Firewall rules applied for all profiles (Private, Public, Domain) and ports." -ForegroundColor Gray
 
 try {
     $wifiConn = Get-NetConnectionProfile -InterfaceAlias "*Wi-Fi*" -ErrorAction SilentlyContinue
@@ -230,12 +244,16 @@ Stop-Process -Name "*NearbyDevices*", "*MultiControl*" -Force -ErrorAction Silen
 Start-Sleep -Seconds 1
 
 Restart-Service -Name "SamsungContinuityWindowsService" -Force -ErrorAction SilentlyContinue
-Restart-Service -Name "SamsungMultiControlService" -Force -ErrorAction SilentlyContinue
+$mcSvc = Get-Service -Name "Samsung Multi Control Service", "SamsungMultiControlService" -ErrorAction SilentlyContinue
+if ($mcSvc) {
+    Restart-Service -Name $mcSvc.Name -Force -ErrorAction SilentlyContinue
+    Write-Host "  -> Multi Control service ($($mcSvc.Name)) restarted." -ForegroundColor Gray
+}
 Start-Sleep -Seconds 2
 
 Write-Host "Launching Nearby Devices (Galaxy Connect) & Multi Control..." -ForegroundColor Green
 Start-Process "shell:AppsFolder\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy!App" -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 4
+Start-Sleep -Seconds 3
 Start-Process "shell:AppsFolder\SAMSUNGELECTRONICSCoLtd.MultiControl_wyx1vj98g3asy!App" -ErrorAction SilentlyContinue
 
 Write-Host "`n=================================================================" -ForegroundColor Cyan

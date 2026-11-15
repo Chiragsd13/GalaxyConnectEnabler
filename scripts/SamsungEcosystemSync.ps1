@@ -3,10 +3,14 @@
 # Runs silently on user login to maintain FamilyMDE, test flags, and permissions
 # ==============================================================================
 
-# 1. Ensure FamilyMDE Settings in HKCU
-$mde = "HKCU:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
-if (!(Test-Path $mde)) { New-Item -Path $mde -Force | Out-Null }
-Set-ItemProperty -Path $mde -Name "Settings" -Value 1 -Type DWord -Force
+# 1. Ensure FamilyMDE Settings in HKCU and HKLM
+$mdeHkcu = "HKCU:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
+if (!(Test-Path $mdeHkcu)) { New-Item -Path $mdeHkcu -Force | Out-Null }
+Set-ItemProperty -Path $mdeHkcu -Name "Settings" -Value 1 -Type DWord -Force
+
+$mdeHklm = "HKLM:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE"
+if (!(Test-Path $mdeHklm)) { New-Item -Path $mdeHklm -Force -ErrorAction SilentlyContinue | Out-Null }
+Set-ItemProperty -Path $mdeHklm -Name "Settings" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
 # 2. Ensure LocalState Test Flags
 $dirs = @(
@@ -37,3 +41,11 @@ foreach ($c in $caps) {
         }
     }
 }
+
+# 4. Verify WCF NetTcpPortSharing service
+try {
+    $portSharing = Get-Service -Name "NetTcpPortSharing" -ErrorAction SilentlyContinue
+    if ($portSharing -and $portSharing.Status -ne "Running") {
+        Start-Service -Name "NetTcpPortSharing" -ErrorAction SilentlyContinue
+    }
+} catch {}
