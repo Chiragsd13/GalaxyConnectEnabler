@@ -1,5 +1,5 @@
 ﻿# ==============================================================================
-# Galaxy Connect Enabler - Core Adaptive Engine (v1.2.0)
+# Galaxy Connect Enabler - Core Adaptive Engine (v1.2.1)
 # Universal Samsung Cross-Device Ecosystem for ANY Windows 11 PC
 # Native Support: AMD Ryzen, Intel Core, Snapdragon ARM64, MediaTek, Realtek
 # ==============================================================================
@@ -14,7 +14,7 @@ $ErrorActionPreference = "Continue"
 
 Clear-Host
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "              GALAXY CONNECT ENABLER (v1.2.0)" -ForegroundColor Cyan
+Write-Host "              GALAXY CONNECT ENABLER (v1.2.1)" -ForegroundColor Cyan
 Write-Host "    Intelligent Hardware Detection & Ecosystem Integration Engine" -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 
@@ -260,14 +260,15 @@ Get-ChildItem -Path "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where
 Write-Host "  -> FamilyMDE\Settings = 1 enforced in HKLM, HKCU, and User SIDs." -ForegroundColor Gray
 
 # ==============================================================================
-# PHASE 8: LOCALSTATE ENGINEERING TELEMETRY FLAGS
+# PHASE 8: LOCALSTATE & PROGRAMDATA ENGINEERING FEATURE FLAGS
 # ==============================================================================
-Write-Host "`n[Phase 7] Deploying LocalState Engineering Feature Flags..." -ForegroundColor Yellow
+Write-Host "`n[Phase 7] Deploying Engineering Feature Flags & MultiControl Settings..." -ForegroundColor Yellow
 $localStateDirs = @(
     "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.MultiControl_wyx1vj98g3asy\LocalState",
-    "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState"
+    "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState",
+    "C:\ProgramData\Samsung\SamsungMultiControl"
 )
-$flags = @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC")
+$flags = @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC", "TestNotSamsung.MC")
 foreach ($dir in $localStateDirs) {
     if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     foreach ($f in $flags) {
@@ -275,7 +276,26 @@ foreach ($dir in $localStateDirs) {
         if (!(Test-Path $fp)) { New-Item -ItemType File -Path $fp -Force | Out-Null }
     }
 }
-Write-Host "  -> Flags (TestEnable.MC, TestGCE.MC, TestFamily.MC) active in LocalState." -ForegroundColor Gray
+
+# Ensure MultiControl Settings Cache is enabled (OnOff=1, MC=true)
+$mcDat = "C:\ProgramData\Samsung\SamsungMultiControl\Settings\MCCoreSettings.dat"
+if (Test-Path $mcDat) {
+    try {
+        $json = Get-Content $mcDat -Raw | ConvertFrom-Json
+        $json.AnalyticsData.OnOff = 1
+        foreach ($item in $json.SettingsList) { $item.MC = $true }
+        $newJson = $json | ConvertTo-Json -Depth 10 -Compress
+        $tempPath = "$mcDat.tmp"
+        [System.IO.File]::WriteAllText($tempPath, $newJson)
+        Move-Item -Path $tempPath -Destination $mcDat -Force
+    } catch {}
+}
+
+# Unlock permissions on ProgramData SamsungMultiControl folder
+try {
+    & icacls "C:\ProgramData\Samsung\SamsungMultiControl" /grant "*S-1-15-2-1:(OI)(CI)F" /grant "Users:(OI)(CI)F" /T /Q 2>$null | Out-Null
+} catch {}
+Write-Host "  -> Engineering flags deployed and MultiControl permissions unlocked." -ForegroundColor Gray
 
 # ==============================================================================
 # PHASE 9: UNIVERSAL FIREWALL RULES (ANY PROFILE)
@@ -361,6 +381,23 @@ if ($mcSvc) {
     Write-Host "  -> Multi Control service ($($mcSvc.Name)) restarted." -ForegroundColor Gray
 }
 Start-Sleep -Seconds 2
+
+# Signal MultiControl Service to launch engine
+try {
+    $wh = [System.Threading.EventWaitHandle]::OpenExisting('Global\SamsungMultiControlService_On')
+    $wh.Set() | Out-Null
+    Write-Host "  -> Signaled SamsungMultiControlService_On event." -ForegroundColor Gray
+} catch {}
+
+Start-Sleep -Seconds 2
+$mcProc = Get-Process -Name "SamsungMultiControl" -ErrorAction SilentlyContinue
+if (-not $mcProc) {
+    $mcExe = "C:\Program Files\Samsung\SamsungMultiControl\SamsungMultiControl.exe"
+    if (Test-Path $mcExe) {
+        Start-Process -FilePath $mcExe -WindowStyle Hidden -ErrorAction SilentlyContinue
+        Write-Host "  -> Multi Control engine launched directly." -ForegroundColor Gray
+    }
+}
 
 Write-Host "Launching Nearby Devices (Galaxy Connect) & Multi Control..." -ForegroundColor Green
 Start-Process "shell:AppsFolder\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy!App" -ErrorAction SilentlyContinue

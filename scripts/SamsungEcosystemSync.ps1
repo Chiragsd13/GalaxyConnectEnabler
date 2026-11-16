@@ -22,14 +22,16 @@ Get-ChildItem -Path "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where
     & reg add "HKEY_USERS\$subSid\Software\SAMSUNG\SamsungContinuityService\FamilyMDE" /v Settings /t REG_DWORD /d 1 /f | Out-Null
 }
 
-# 2. Ensure LocalState Test Flags
+# 2. Ensure LocalState & ProgramData Test Flags
 $dirs = @(
     "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.MultiControl_wyx1vj98g3asy\LocalState",
-    "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState"
+    "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState",
+    "C:\ProgramData\Samsung\SamsungMultiControl"
 )
+$testFlags = @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC", "TestNotSamsung.MC")
 foreach ($d in $dirs) {
     if (Test-Path $d) {
-        foreach ($f in @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC")) {
+        foreach ($f in $testFlags) {
             $fp = Join-Path $d $f
             if (!(Test-Path $fp)) { New-Item -ItemType File -Path $fp -Force | Out-Null }
         }
@@ -52,10 +54,54 @@ foreach ($c in $caps) {
     }
 }
 
-# 4. Verify WCF NetTcpPortSharing service
+# 4. Ensure MCCoreSettings.dat has MultiControl On
+$mcDat = "C:\ProgramData\Samsung\SamsungMultiControl\Settings\MCCoreSettings.dat"
+if (Test-Path $mcDat) {
+    try {
+        $json = Get-Content $mcDat -Raw | ConvertFrom-Json
+        $changed = $false
+        if ($json.AnalyticsData.OnOff -ne 1) {
+            $json.AnalyticsData.OnOff = 1
+            $changed = $true
+        }
+        foreach ($item in $json.SettingsList) {
+            if (-not $item.MC) {
+                $item.MC = $true
+                $changed = $true
+            }
+        }
+        if ($changed) {
+            $newJson = $json | ConvertTo-Json -Depth 10 -Compress
+            $tempPath = "$mcDat.tmp"
+            [System.IO.File]::WriteAllText($tempPath, $newJson)
+            Move-Item -Path $tempPath -Destination $mcDat -Force
+        }
+    } catch {}
+}
+
+# 5. Verify WCF NetTcpPortSharing service
 try {
     $portSharing = Get-Service -Name "NetTcpPortSharing" -ErrorAction SilentlyContinue
     if ($portSharing -and $portSharing.Status -ne "Running") {
         Start-Service -Name "NetTcpPortSharing" -ErrorAction SilentlyContinue
     }
 } catch {}
+
+# 6. Ensure Multi Control engine is running in the user session
+$mcProc = Get-Process -Name "SamsungMultiControl" -ErrorAction SilentlyContinue
+if (-not $mcProc) {
+    try {
+        $wh = [System.Threading.EventWaitHandle]::OpenExisting('Global\SamsungMultiControlService_On')
+        $wh.Set() | Out-Null
+    } catch {}
+    
+    # Fallback direct start if service doesn't spawn it within 2 seconds
+    Start-Sleep -Seconds 2
+    $mcProc = Get-Process -Name "SamsungMultiControl" -ErrorAction SilentlyContinue
+    if (-not $mcProc) {
+        $mcExe = "C:\Program Files\Samsung\SamsungMultiControl\SamsungMultiControl.exe"
+        if (Test-Path $mcExe) {
+            Start-Process -FilePath $mcExe -WindowStyle Hidden -ErrorAction SilentlyContinue
+        }
+    }
+}

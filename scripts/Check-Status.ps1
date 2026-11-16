@@ -1,5 +1,5 @@
 ﻿# ==============================================================================
-# Galaxy Connect Enabler - Diagnostic & Status Checker (v1.2.0)
+# Galaxy Connect Enabler - Diagnostic & Status Checker (v1.2.1)
 # ==============================================================================
 
 Write-Host "=================================================================" -ForegroundColor Cyan
@@ -84,18 +84,20 @@ if ($mdeHkcu -or $mdeSid) {
     Write-Host "  • HKCU / User SID     : Missing or Disabled [FAIL]" -ForegroundColor Red
 }
 
-# 3. LocalState Engineering Flags
+# 3. LocalState & ProgramData Engineering Flags
 Write-Host "`n[3] Engineering Test Flags:" -ForegroundColor Yellow
 $mcFlags = "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.MultiControl_wyx1vj98g3asy\LocalState"
 $ndFlags = "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState"
+$pdFlags = "C:\ProgramData\Samsung\SamsungMultiControl"
 
-foreach ($f in @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC")) {
+foreach ($f in @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC", "TestNotSamsung.MC")) {
     $mcOk = Test-Path (Join-Path $mcFlags $f)
     $ndOk = Test-Path (Join-Path $ndFlags $f)
-    if ($mcOk -and $ndOk) {
-        Write-Host "  • Flag $f : Active in MultiControl & NearbyDevices [OK]" -ForegroundColor Green
+    $pdOk = Test-Path (Join-Path $pdFlags $f)
+    if ($mcOk -and $ndOk -and $pdOk) {
+        Write-Host "  • Flag $f : Active in MultiControl, NearbyDevices & ProgramData [OK]" -ForegroundColor Green
     } else {
-        Write-Host "  • Flag $f : Missing (MC: $mcOk, ND: $ndOk) [WARNING]" -ForegroundColor Yellow
+        Write-Host "  • Flag $f : Missing (MC: $mcOk, ND: $ndOk, PD: $pdOk) [WARNING]" -ForegroundColor Yellow
     }
 }
 

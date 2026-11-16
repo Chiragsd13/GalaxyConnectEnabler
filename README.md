@@ -27,6 +27,7 @@ Samsung's multi-device software stack — **Multi Control** (keyboard/mouse shar
 1. **The Laptop Wi-Fi Whitelist**: If a machine identifies as a Samsung laptop, Samsung's continuity service (`WindowsMCFCore.exe`) scans the network interface and throws `Non Supporting Wi-Fi vendor`, intentionally rejecting laptops with **MediaTek** (MT7921, MT7922, AMD RZ608/RZ616), **Realtek** (RTL8852AE/BE/CE), or **Qualcomm** Wi-Fi.
 2. **The OEM Identity Lock**: If unspoofed or left as Lenovo, ASUS, HP, Dell, or Acer, Samsung Multi Control refuses to connect.
 3. **The User Session P2P Lock**: Even when spoofed in machine hives (`HKLM`), user-level UWP apps check `HKCU:\Software\SAMSUNG\SamsungContinuityService\FamilyMDE`. Missing this in `HKCU` or user SIDs causes instant disconnection after discovery.
+4. **The Runtime Engine Permission & State Lock**: While Nearby Devices discovers companion devices via Bluetooth LE, actual socket connections, input hooks, and Wi-Fi Direct sessions are handled by `SamsungMultiControl.exe`. If `C:\ProgramData\Samsung\SamsungMultiControl\Settings\MCCoreSettings.dat` has restricted ACLs or `MC: false`, the background service silences the engine, causing devices to show up in the UI but fail to connect.
 
 **Galaxy Connect Enabler detects your exact hardware, identifies the roadblocks, and applies the targeted bypasses automatically.**
 
@@ -38,7 +39,7 @@ When you run `Enable-GalaxyConnect.bat` or `Check-Status.bat`, the engine first 
 
 ```
 =================================================================
-              GALAXY CONNECT ENABLER (v1.2.0)
+              GALAXY CONNECT ENABLER (v1.2.1)
     Intelligent Hardware Detection & Ecosystem Integration Engine
 =================================================================
 
@@ -91,7 +92,14 @@ Samsung Continuity's `OEMHelper.GetFamilyMDESettings()` checks `HKCU`, `HKLM`, a
 ### 4. Location & Radio Privacy Consent
 Automatically grants `Allow` in Windows 11 CapabilityAccessManager (`location`, `bluetoothSync`, `radios`) for all Samsung packages and desktop processes — permanently eliminating *"Turn on Location in Windows Settings"* banners.
 
-### 5. Universal Multi-Profile Firewall Rules
+### 5. Multi Control Runtime Engine & Settings Access
+Samsung Multi Control relies on two distinct layers:
+- `SamsungMultiControlService.exe` (Windows Service in Session 0)
+- `SamsungMultiControl.exe` (Interactive input hook & Wi-Fi Direct socket engine in the user session)
+
+The enabler sets `MC = true` and `OnOff = 1` in `C:\ProgramData\Samsung\SamsungMultiControl\Settings\MCCoreSettings.dat`, unlocks file permissions for standard users and AppContainer sandboxes, deploys engineering bypass flags (`TestEnable.MC`, `TestGCE.MC`, `TestFamily.MC`, `TestNotSamsung.MC`), and signals the `Global\SamsungMultiControlService_On` event to guarantee `SamsungMultiControl.exe` is launched and maintained.
+
+### 6. Universal Multi-Profile Firewall Rules
 Opens inbound UDP discovery (`1900, 3702, 5353, 5355`) and TCP streaming (`49200-49202, 8080, 8443`) on **ALL network profiles** (`Domain`, `Private`, and `Public`), ensuring cross-device features work even on public and campus Wi-Fi networks.
 
 ---
@@ -112,7 +120,7 @@ Galaxy Connect Enabler is designed to work in two modes:
 ## 🚀 Quick Start
 
 ### Method 1: Download Release (Recommended)
-1. Download `GalaxyConnectEnabler-v1.2.0.zip` from [Releases](https://github.com/Chiragsd13/GalaxyConnectEnabler/releases).
+1. Download `GalaxyConnectEnabler-v1.2.1.zip` from [Releases](https://github.com/Chiragsd13/GalaxyConnectEnabler/releases).
 2. Extract the archive.
 3. Right-click **`Enable-GalaxyConnect.bat`** and select **Run as administrator**.
 
