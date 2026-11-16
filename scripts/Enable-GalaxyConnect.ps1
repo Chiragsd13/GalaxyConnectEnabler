@@ -268,21 +268,31 @@ $localStateDirs = @(
     "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState",
     "C:\ProgramData\Samsung\SamsungMultiControl"
 )
-$flags = @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC", "TestNotSamsung.MC")
+$flags = @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC")
 foreach ($dir in $localStateDirs) {
     if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     foreach ($f in $flags) {
         $fp = Join-Path $dir $f
         if (!(Test-Path $fp)) { New-Item -ItemType File -Path $fp -Force | Out-Null }
     }
+    # Clean up TestNotSamsung.MC if present (it forces OEMHelper.IsSamsungPC to False and breaks P2P/switching)
+    $notSamsung = Join-Path $dir "TestNotSamsung.MC"
+    if (Test-Path $notSamsung) { Remove-Item $notSamsung -Force -ErrorAction SilentlyContinue }
 }
 
-# Ensure MultiControl Settings Cache is enabled (OnOff=1, MC=true)
-$mcDat = "C:\ProgramData\Samsung\SamsungMultiControl\Settings\MCCoreSettings.dat"
+# Ensure MultiControl Settings & Connection Option are configured for Any Switching (Option 3)
+$settingsDir = "C:\ProgramData\Samsung\SamsungMultiControl\Settings"
+if (!(Test-Path $settingsDir)) { New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null }
+$connOptionPath = Join-Path $settingsDir "DeviceConnectionOption.json"
+Set-Content -Path $connOptionPath -Value '{"Option":3,"bEasyMove":true}' -Encoding utf8 -Force
+
+$mcDat = Join-Path $settingsDir "MCCoreSettings.dat"
 if (Test-Path $mcDat) {
     try {
         $json = Get-Content $mcDat -Raw | ConvertFrom-Json
         $json.AnalyticsData.OnOff = 1
+        $json.ConnectionOption = 3
+        $json.AnalyticsData.AutoConnectionSettings = "Any Wi-Fi or Wi-Fi Direct network"
         foreach ($item in $json.SettingsList) { $item.MC = $true }
         $newJson = $json | ConvertTo-Json -Depth 10 -Compress
         $tempPath = "$mcDat.tmp"

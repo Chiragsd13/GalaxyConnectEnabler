@@ -90,7 +90,7 @@ $mcFlags = "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.MultiControl_wyx1
 $ndFlags = "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState"
 $pdFlags = "C:\ProgramData\Samsung\SamsungMultiControl"
 
-foreach ($f in @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC", "TestNotSamsung.MC")) {
+foreach ($f in @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC")) {
     $mcOk = Test-Path (Join-Path $mcFlags $f)
     $ndOk = Test-Path (Join-Path $ndFlags $f)
     $pdOk = Test-Path (Join-Path $pdFlags $f)
@@ -99,6 +99,15 @@ foreach ($f in @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC", "TestNotSamsung
     } else {
         Write-Host "  • Flag $f : Missing (MC: $mcOk, ND: $ndOk, PD: $pdOk) [WARNING]" -ForegroundColor Yellow
     }
+}
+
+# Verify TestNotSamsung.MC is NOT present (it forces OEMHelper.IsSamsungPC to False)
+$badFlag1 = Test-Path (Join-Path $pdFlags "TestNotSamsung.MC")
+$badFlag2 = Test-Path (Join-Path $mcFlags "TestNotSamsung.MC")
+if (-not $badFlag1 -and -not $badFlag2) {
+    Write-Host "  • OEM Samsung PC Mode : Unlocked (TestNotSamsung.MC absent) [OK]" -ForegroundColor Green
+} else {
+    Write-Host "  • OEM Samsung PC Mode : LOCKED to Non-Samsung (TestNotSamsung.MC found) [FAIL]" -ForegroundColor Red
 }
 
 # 4. Windows Services

@@ -28,13 +28,16 @@ $dirs = @(
     "$env:LOCALAPPDATA\Packages\SAMSUNGELECTRONICSCoLtd.SamsungMyDevices_wyx1vj98g3asy\LocalState",
     "C:\ProgramData\Samsung\SamsungMultiControl"
 )
-$testFlags = @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC", "TestNotSamsung.MC")
+$testFlags = @("TestEnable.MC", "TestGCE.MC", "TestFamily.MC")
 foreach ($d in $dirs) {
     if (Test-Path $d) {
         foreach ($f in $testFlags) {
             $fp = Join-Path $d $f
             if (!(Test-Path $fp)) { New-Item -ItemType File -Path $fp -Force | Out-Null }
         }
+        # Clean up TestNotSamsung.MC if present (it forces OEMHelper.IsSamsungPC to False)
+        $notSamsung = Join-Path $d "TestNotSamsung.MC"
+        if (Test-Path $notSamsung) { Remove-Item $notSamsung -Force -ErrorAction SilentlyContinue }
     }
 }
 
@@ -54,14 +57,27 @@ foreach ($c in $caps) {
     }
 }
 
-# 4. Ensure MCCoreSettings.dat has MultiControl On
-$mcDat = "C:\ProgramData\Samsung\SamsungMultiControl\Settings\MCCoreSettings.dat"
+# 4. Ensure MCCoreSettings.dat has MultiControl On and Any Switching (Option 3)
+$settingsDir = "C:\ProgramData\Samsung\SamsungMultiControl\Settings"
+if (!(Test-Path $settingsDir)) { New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null }
+
+$connOptionPath = Join-Path $settingsDir "DeviceConnectionOption.json"
+if (!(Test-Path $connOptionPath)) {
+    Set-Content -Path $connOptionPath -Value '{"Option":3,"bEasyMove":true}' -Encoding utf8 -Force
+}
+
+$mcDat = Join-Path $settingsDir "MCCoreSettings.dat"
 if (Test-Path $mcDat) {
     try {
         $json = Get-Content $mcDat -Raw | ConvertFrom-Json
         $changed = $false
         if ($json.AnalyticsData.OnOff -ne 1) {
             $json.AnalyticsData.OnOff = 1
+            $changed = $true
+        }
+        if ($json.ConnectionOption -ne 3) {
+            $json.ConnectionOption = 3
+            $json.AnalyticsData.AutoConnectionSettings = "Any Wi-Fi or Wi-Fi Direct network"
             $changed = $true
         }
         foreach ($item in $json.SettingsList) {
